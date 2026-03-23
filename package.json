@@ -3,11 +3,17 @@
   "version": "1.0.0",
   "description": "Phaser 3 game project",
   "scripts": {
-    "dev": "serve -l 8080",
-    "lint": "htmlhint index.html"
+    "dev": "browser-sync start --server --files '**/*.html,assets/**' --port 8080 --no-open",
+    "lint": "htmlhint index.html && eslint index.html",
+    "lint:fix": "eslint --fix index.html",
+    "format": "prettier --write index.html",
+    "format:check": "prettier --check index.html"
   },
   "devDependencies": {
+    "browser-sync": "^3.0.3",
+    "eslint": "^8.57.0",
+    "eslint-plugin-html": "^8.1.2",
     "htmlhint": "^1.1.4",
-    "serve": "^14.2.4"
+    "prettier": "^3.5.3"
   }
 }
