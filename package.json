@@ -1,0 +1,13 @@
+{
+  "name": "phasergamedev",
+  "version": "1.0.0",
+  "description": "Phaser 3 game project",
+  "scripts": {
+    "dev": "serve -l 8080",
+    "lint": "htmlhint index.html"
+  },
+  "devDependencies": {
+    "htmlhint": "^1.1.4",
+    "serve": "^14.2.4"
+  }
+}
