@@ -1,0 +1,14 @@
+{
+  "plugins": ["html"],
+  "env": {
+    "browser": true,
+    "es6": true
+  },
+  "globals": {
+    "Phaser": "readonly"
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-undef": "warn"
+  }
+}
