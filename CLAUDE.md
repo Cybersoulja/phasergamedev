@@ -4,20 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Phaser 3 game project using a single-file architecture. No build step or package manager is needed — Phaser 3.20.0 is loaded from CDN and the game runs directly in the browser.
+A Phaser 3 game project using a single-file architecture. Phaser 3.20.0 is loaded from CDN and the game runs directly in the browser. No build step is required for the game itself — dev tooling (Vite, ESLint, Prettier) is managed via npm.
 
 ## Running the Game
 
-Clone the repo and serve with any static file server — no build step needed:
-
 ```bash
-git clone <repo-url>
-cd phasergamedev
-python3 -m http.server 8080
-# then open http://localhost:8080
+npm install
+npm run dev        # Vite dev server on http://localhost:5173 with HMR
 ```
 
-On Replit, `static-web-server` is used automatically on port 80.
+Or serve statically without npm:
+
+```bash
+python3 -m http.server 8080
+```
 
 ## Architecture
 
@@ -34,7 +34,20 @@ On Replit, `static-web-server` is used automatically on port 80.
 - Create objects in `create()` using `this.add.*`, `this.physics.*`, `this.input.*`
 - The scene context (`this`) is the Phaser.Scene instance in all three callbacks
 
-## Development Notes
+## Dev Tooling
 
-- No tests, no linter, no TypeScript compilation — edit `index.html` directly
-- Replit auto-deploys as a static site; the entrypoint is `index.html`
+| Command | What it does |
+|---|---|
+| `npm run dev` | Vite dev server with HMR |
+| `npm run lint` | htmlhint + eslint on `index.html` |
+| `npm run lint:fix` | Auto-fix ESLint issues |
+| `npm run format` | Prettier write |
+| `npm run format:check` | Prettier check (no write) |
+
+- **ESLint** — lints inline `<script>` blocks via `eslint-plugin-html`; `Phaser` is declared as a global in `.eslintrc.json`
+- **Prettier** — formats HTML/JS; config in `.prettierrc`
+- **Vite** — dev server only; no bundling/build output
+
+## Deployment
+
+Deployed to Cloudflare via `wrangler.jsonc`. The root directory is served as static assets. Dev-only files are excluded via `.wranglerignore`.
