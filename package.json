@@ -17,3 +17,8 @@
     "prettier": "^3.5.3"
   }
 }
+{
+    "scripts": {
+      "dev": "vite"
+    }
+  }
