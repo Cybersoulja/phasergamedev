@@ -3,14 +3,14 @@
   "version": "1.0.0",
   "description": "Phaser 3 game project",
   "scripts": {
-    "dev": "browser-sync start --server --files '**/*.html,assets/**' --port 8080 --no-open",
+    "dev": "vite",
     "lint": "htmlhint index.html && eslint index.html",
     "lint:fix": "eslint --fix index.html",
     "format": "prettier --write index.html",
     "format:check": "prettier --check index.html"
   },
   "devDependencies": {
-    "browser-sync": "^3.0.3",
+    "vite": "^6.3.1",
     "eslint": "^8.57.0",
     "eslint-plugin-html": "^8.1.2",
     "htmlhint": "^1.1.4",
