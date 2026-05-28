@@ -145,8 +145,111 @@ class PreloadScene extends Phaser.Scene {
     this.load.image('star','assets/star.png');
   }
   create(){
-    this.scene.start('OverworldScene');
-    this.scene.launch('UIScene');
+    this.scene.start('TitleScene');
+  }
+}
+
+// ============================================================
+// TITLE SCENE
+// ============================================================
+class TitleScene extends Phaser.Scene {
+  constructor(){ super({key:'TitleScene'}); }
+
+  create(){
+    const W=800, H=600;
+
+    // Sky background
+    this.add.image(W/2, H/2, 'sky').setDisplaySize(W, H);
+
+    // Dark gradient overlay
+    const ov=this.add.graphics();
+    ov.fillStyle(0x000000,0.62); ov.fillRect(0,0,W,H);
+
+    // Floating stars
+    this.stars=[];
+    for(let i=0;i<28;i++){
+      const s=this.add.image(
+        Phaser.Math.Between(20,780),
+        Phaser.Math.Between(0,H),
+        'star'
+      ).setScale(Phaser.Math.FloatBetween(0.15,0.45))
+       .setAlpha(Phaser.Math.FloatBetween(0.4,0.9));
+      this.stars.push({ sprite:s, speed:Phaser.Math.FloatBetween(0.2,0.7) });
+    }
+
+    // Decorative top/bottom border lines
+    const border=this.add.graphics();
+    border.lineStyle(2,0x9966ff,0.6);
+    border.lineBetween(60,110,740,110);
+    border.lineBetween(60,490,740,490);
+
+    // Game title
+    this.add.text(W/2, 180, 'REALM OF SHADOWS', {
+      fontSize:'52px', fill:'#ffffff', fontStyle:'bold',
+      stroke:'#6600cc', strokeThickness:6,
+      shadow:{ offsetX:3, offsetY:3, color:'#000', blur:8, fill:true }
+    }).setOrigin(0.5);
+
+    // Subtitle
+    this.add.text(W/2, 248, 'A Fantasy RPG', {
+      fontSize:'20px', fill:'#bb99ff', fontStyle:'italic'
+    }).setOrigin(0.5);
+
+    // Party sprite preview row
+    const heroX=[310,400,490], heroTints=[0xffffff,0x88aaff,0xffcc88];
+    for(let i=0;i<3;i++){
+      this.add.image(heroX[i], 370, 'dude')
+        .setScale(0.8).setTint(heroTints[i]);
+    }
+
+    // Enemy preview
+    this.add.image(W/2, 370, 'bomb')
+      .setScale(1.1).setTint(0xaa00ff).setAlpha(0.25)
+      .setX(680);
+
+    // Press space prompt (blinking)
+    this.promptTxt=this.add.text(W/2, 450, 'PRESS SPACE TO BEGIN', {
+      fontSize:'18px', fill:'#ffcc44', letterSpacing:4
+    }).setOrigin(0.5);
+
+    this.tweens.add({
+      targets:this.promptTxt, alpha:0,
+      duration:700, ease:'Linear',
+      yoyo:true, repeat:-1
+    });
+
+    // Controls hint
+    this.add.text(W/2, 530, 'Move: WASD / Arrows     Confirm: Space / Enter     Back: Esc', {
+      fontSize:'11px', fill:'#888888'
+    }).setOrigin(0.5);
+
+    // Version
+    this.add.text(W-10, H-10, 'v0.1', {
+      fontSize:'10px', fill:'#444444'
+    }).setOrigin(1,1);
+
+    // Input
+    this.spaceKey=this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.enterKey=this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
+    this.input.once('pointerdown', ()=>this._start());
+  }
+
+  update(){
+    // Drift stars upward, wrap around
+    for(const {sprite,speed} of this.stars){
+      sprite.y-=speed;
+      if(sprite.y<-10) sprite.y=610;
+    }
+    if(Phaser.Input.Keyboard.JustDown(this.spaceKey)||
+       Phaser.Input.Keyboard.JustDown(this.enterKey)) this._start();
+  }
+
+  _start(){
+    this.cameras.main.fade(500,0,0,0);
+    this.time.delayedCall(500,()=>{
+      this.scene.start('OverworldScene');
+      this.scene.launch('UIScene');
+    });
   }
 }
 
@@ -789,7 +892,7 @@ const config={
   type: Phaser.AUTO,
   width: 800, height: 600,
   backgroundColor:'#1a1a2e',
-  scene:[PreloadScene,OverworldScene,BattleScene,DialogueScene,UIScene]
+  scene:[PreloadScene,TitleScene,OverworldScene,BattleScene,DialogueScene,UIScene]
 };
 new Phaser.Game(config);
 </script>
