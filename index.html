@@ -13,8 +13,8 @@
 // GLOBAL CONSTANTS & GAME STATE
 // ============================================================
 const TILE = 32, COLS = 40, ROWS = 30;
-const T_GRASS=0, T_PATH=1, T_WATER=2, T_TREE=3, T_TOWN=4;
-const TILE_COLORS = { 0:0x4a8c3f, 1:0xc8aa6e, 2:0x2255aa, 3:0x2d5a1b, 4:0x8b7355 };
+const T_GRASS=0, T_PATH=1, T_WATER=2, T_TREE=3, T_TOWN=4, T_DENTRY=5;
+const TILE_COLORS = { 0:0x4a8c3f, 1:0xc8aa6e, 2:0x2255aa, 3:0x2d5a1b, 4:0x8b7355, 5:0x221133 };
 
 const ITEMS = {
   potion:      { id:'potion',      name:'Potion',       type:'consumable', effect:{hp:30},  value:50  },
@@ -120,12 +120,43 @@ function buildMap(){
                [10,10],[11,10],[10,11],[20,5],[21,5],[22,5],
                [25,30],[26,30],[25,31],[18,35],[19,35],[18,36]];
   for(const [r,c] of trees) if(r>0&&r<ROWS-1&&c>0&&c<COLS-1) m[r][c]=T_TREE;
+  // Dungeon entrance at east end of horizontal path
+  m[15][36]=T_DENTRY; m[14][36]=T_DENTRY; m[16][36]=T_DENTRY;
   return m;
 }
 const WORLD_MAP=buildMap();
 function isWalkable(tx,ty){
   if(tx<0||tx>=COLS||ty<0||ty>=ROWS) return false;
   const t=WORLD_MAP[ty][tx]; return t!==T_WATER&&t!==T_TREE;
+}
+
+// ============================================================
+// DUNGEON MAP DATA
+// ============================================================
+const DTILE=32, DCOLS=20, DROWS=14;
+const DT_WALL=0, DT_FLOOR=1, DT_BOSS=2, DT_EXIT=3;
+// W=wall .=floor X=boss E=exit
+const DMAP_STR=[
+  'WWWWWWWWWWWWWWWWWWWW',
+  'WWWWWWWWWWWWWWWWWWWW',
+  'WWWWWWW..X..WWWWWWWW',
+  'WWWWWWW.....WWWWWWWW',
+  'WWWWWWWWW.WWWWWWWWWW',
+  'WWWW..........WWWWWW',
+  'WWWW.WWWWWWWW.WWWWWW',
+  'WWWW..........WWWWWW',
+  'WWWWWWWWW.WWWWWWWWWW',
+  'WW..............WWWW',
+  'WW.WWWWWWWWWWWW.WWWW',
+  'WW..............WWWW',
+  'WWWWWWWWW.WWWWWWWWWW',
+  'WWWWWWWWWEWWWWWWWWWW'
+];
+const DUNGEON_MAP=DMAP_STR.map(r=>r.split('').map(c=>c==='W'?DT_WALL:c==='X'?DT_BOSS:c==='E'?DT_EXIT:DT_FLOOR));
+const D_START={x:9,y:12};
+function isDWalkable(tx,ty){
+  if(tx<0||tx>=DCOLS||ty<0||ty>=DROWS) return false;
+  return DUNGEON_MAP[ty][tx]!==DT_WALL;
 }
 
 // ============================================================
@@ -284,6 +315,7 @@ class OverworldScene extends Phaser.Scene {
 
     this.game.events.on('battleEnd', this._onBattleEnd, this);
     this.game.events.on('dialogueEnd', this._onDialogueEnd, this);
+    this.game.events.on('dungeonExit', this._onDungeonExit, this);
   }
 
   _drawMap(){
@@ -298,6 +330,8 @@ class OverworldScene extends Phaser.Scene {
     }
     // Town label
     this.add.text(5*TILE+64, 4*TILE-14, 'Village', {fontSize:'11px',fill:'#fff',backgroundColor:'#00000066',padding:{x:3,y:1}}).setOrigin(0.5).setDepth(5);
+    // Dungeon entrance label
+    this.add.text(36*TILE+16, 15*TILE-14, '⚔ Dark Fortress', {fontSize:'10px',fill:'#dd88ff',backgroundColor:'#00000088',padding:{x:2,y:1}}).setOrigin(0.5).setDepth(5);
   }
 
   update(_t,delta){
@@ -323,7 +357,9 @@ class OverworldScene extends Phaser.Scene {
     this.player.setPosition(nx*TILE+TILE/2, ny*TILE+TILE/2);
     this.stepCooldown=140;
 
-    if(WORLD_MAP[ny][nx]===T_GRASS && Math.random()<0.05) this._triggerBattle();
+    const tile=WORLD_MAP[ny][nx];
+    if(tile===T_DENTRY){ this._triggerDungeon(); return; }
+    if(tile===T_GRASS && Math.random()<0.05) this._triggerBattle();
   }
 
   _triggerDialogue(npc){
@@ -350,6 +386,23 @@ class OverworldScene extends Phaser.Scene {
     if(result==='defeat') for(const h of GS.party) if(h.hp<=0) h.hp=1;
   }
   _onDialogueEnd(){ this.inDialogue=false; }
+  _onDungeonExit(){ this.inBattle=false; this.scene.resume('OverworldScene'); }
+
+  _triggerDungeon(){
+    if(GS.flags.dungeonCleared){
+      // Already cleared — show a brief message via a fake NPC
+      this._triggerDialogue({
+        id:'dungeon_done', tileX:36, tileY:15, tint:0xaa00ff,
+        label:'Dungeon', isShop:false,
+        dialogue:['The dark fortress stands silent. The evil has been vanquished.']
+      });
+      return;
+    }
+    this.inBattle=true;
+    this.scene.launch('DungeonScene');
+    this.scene.bringToTop('DungeonScene');
+    this.scene.pause('OverworldScene');
+  }
 }
 
 // ============================================================
@@ -360,7 +413,9 @@ class BattleScene extends Phaser.Scene {
 
   init(data){
     this.enemies=data.enemies;
-    this.phase='init'; // init|menu|selectTarget|selectAlly|selectItem|animating|over
+    this.isBoss=data.isBoss||false;
+    this.callerScene=data.caller||'OverworldScene';
+    this.phase='init';
     this.menuIdx=0; this.targetIdx=0; this.allyIdx=0; this.itemIdx=0;
     this.selectedAction=null;
     this.turnQueue=[]; this.turnPos=0;
@@ -565,8 +620,16 @@ class BattleScene extends Phaser.Scene {
 
   _close(outcome){
     this.scene.stop('BattleScene');
-    this.scene.resume('OverworldScene');
-    this.game.events.emit('battleEnd', outcome);
+    if(this.isBoss && outcome==='win'){
+      GS.flags.dungeonCleared=true;
+      this.game.events.emit('bossWin');
+    } else if(this.callerScene==='DungeonScene'){
+      this.scene.resume('DungeonScene');
+      this.game.events.emit('battleEnd', outcome);
+    } else {
+      this.scene.resume('OverworldScene');
+      this.game.events.emit('battleEnd', outcome);
+    }
     this.game.events.emit('hpUpdate');
   }
 
@@ -929,6 +992,239 @@ class DialogueScene extends Phaser.Scene {
   }
 }
 
+
+// ============================================================
+// DUNGEON SCENE
+// ============================================================
+class DungeonScene extends Phaser.Scene {
+  constructor(){ super({key:'DungeonScene'}); }
+
+  create(){
+    this.inBattle=false;
+    this.stepCooldown=0;
+    this.px=D_START.x; this.py=D_START.y;
+
+    // Offset to center 20x14 dungeon in 800x600
+    this.ox=Math.floor((800-DCOLS*DTILE)/2);
+    this.oy=Math.floor((600-DROWS*DTILE)/2);
+
+    // Background fill
+    this.add.rectangle(400,300,800,600,0x111118);
+
+    // Draw map
+    this.mapGfx=this.add.graphics();
+    this._drawDMap();
+
+    // Player sprite
+    this.player=this.add.image(
+      this.ox+this.px*DTILE+DTILE/2,
+      this.oy+this.py*DTILE+DTILE/2,
+      'dude'
+    ).setScale(0.7).setDepth(5);
+
+    // Header bar
+    this.add.graphics().fillStyle(0x000000,0.7).fillRect(0,0,800,28);
+    this.add.text(400,14,'Dark Fortress',{fontSize:'14px',fill:'#dd88ff',fontStyle:'bold'}).setOrigin(0.5);
+    this.hint=this.add.text(400,580,'Walk north to face the Dark Knight',{fontSize:'11px',fill:'#888'}).setOrigin(0.5,1);
+
+    // Input
+    this.cursors=this.input.keyboard.createCursorKeys();
+    this.wasd=this.input.keyboard.addKeys('W,A,S,D');
+
+    // Events
+    this.game.events.on('battleEnd', this._onBattleEnd, this);
+    this.game.events.on('bossWin',   this._onBossWin,   this);
+  }
+
+  _drawDMap(){
+    const g=this.mapGfx; g.clear();
+    const floorCol=0x555566, wallCol=0x1a1a28, bossCol=0x330011, exitCol=0x112211;
+    for(let r=0;r<DROWS;r++){
+      for(let c=0;c<DCOLS;c++){
+        const t=DUNGEON_MAP[r][c];
+        const col=t===DT_WALL?wallCol:t===DT_BOSS?bossCol:t===DT_EXIT?exitCol:floorCol;
+        g.fillStyle(col); g.fillRect(this.ox+c*DTILE, this.oy+r*DTILE, DTILE, DTILE);
+        g.lineStyle(1,0x000000,0.4); g.strokeRect(this.ox+c*DTILE, this.oy+r*DTILE, DTILE, DTILE);
+      }
+    }
+    // Boss room marker
+    const bx=9, by=2;
+    g.lineStyle(2,0xaa00ff,0.8);
+    g.strokeRect(this.ox+(bx-2)*DTILE, this.oy+(by-1)*DTILE, 6*DTILE, 4*DTILE);
+    // Boss skull icon hint
+    this.add.text(this.ox+bx*DTILE+DTILE/2, this.oy+by*DTILE, '☠',
+      {fontSize:'22px',fill:'#aa00ff'}).setOrigin(0.5).setDepth(4);
+    // Exit arrow hint
+    this.add.text(this.ox+9*DTILE+DTILE/2, this.oy+13*DTILE+DTILE/2, '↓',
+      {fontSize:'18px',fill:'#44aa44'}).setOrigin(0.5).setDepth(4);
+  }
+
+  update(_t,delta){
+    if(this.inBattle) return;
+    this.stepCooldown-=delta;
+    if(this.stepCooldown>0) return;
+
+    let dx=0,dy=0;
+    const c=this.cursors,w=this.wasd;
+    if(c.left.isDown||w.A.isDown) dx=-1;
+    else if(c.right.isDown||w.D.isDown) dx=1;
+    else if(c.up.isDown||w.W.isDown) dy=-1;
+    else if(c.down.isDown||w.S.isDown) dy=1;
+    if(!dx&&!dy) return;
+
+    const nx=this.px+dx, ny=this.py+dy;
+
+    // Exit check
+    if(ny>=DROWS || (ny>=0&&ny<DROWS&&DUNGEON_MAP[ny][nx]===DT_EXIT)){
+      this._exitDungeon(); return;
+    }
+
+    if(!isDWalkable(nx,ny)) return;
+
+    this.px=nx; this.py=ny;
+    this.player.setPosition(this.ox+nx*DTILE+DTILE/2, this.oy+ny*DTILE+DTILE/2);
+    this.stepCooldown=150;
+
+    const tile=DUNGEON_MAP[ny][nx];
+    if(tile===DT_BOSS){
+      this._triggerBoss(); return;
+    }
+    // Random encounter on floor (8% per step)
+    if(tile===DT_FLOOR && Math.random()<0.08) this._triggerEncounter();
+  }
+
+  _triggerBoss(){
+    this.inBattle=true;
+    this.hint.setText('Face the Dark Knight!');
+    const boss=deepCopyEnemy(ENEMY_TEMPLATES.darkKnight);
+    boss.hp=200; boss.maxHp=200; boss.atk=25; boss.def=14;
+    this.scene.launch('BattleScene',{enemies:[boss], isBoss:true, caller:'DungeonScene'});
+    this.scene.bringToTop('BattleScene');
+    this.scene.pause('DungeonScene');
+  }
+
+  _triggerEncounter(){
+    this.inBattle=true;
+    const pool=['goblin','goblin','darkKnight'];
+    const enemies=[deepCopyEnemy(ENEMY_TEMPLATES[pool[rand(0,pool.length-1)]])];
+    this.scene.launch('BattleScene',{enemies, caller:'DungeonScene'});
+    this.scene.bringToTop('BattleScene');
+    this.scene.pause('DungeonScene');
+  }
+
+  _onBattleEnd(result){
+    this.inBattle=false;
+    if(result==='defeat') for(const h of GS.party) if(h.hp<=0) h.hp=1;
+    // Move player off boss tile if they just beat it (won't retrigger)
+  }
+
+  _onBossWin(){
+    // Launch ending screen
+    this.scene.stop('DungeonScene');
+    this.scene.stop('UIScene');
+    this.scene.start('EndingScene');
+  }
+
+  _exitDungeon(){
+    this.scene.stop('DungeonScene');
+    this.scene.resume('OverworldScene');
+    this.game.events.emit('dungeonExit');
+    this.game.events.emit('hpUpdate');
+  }
+
+  destroy(){
+    this.game.events.off('battleEnd', this._onBattleEnd, this);
+    this.game.events.off('bossWin',   this._onBossWin,   this);
+    super.destroy && super.destroy();
+  }
+}
+
+// ============================================================
+// ENDING SCENE
+// ============================================================
+class EndingScene extends Phaser.Scene {
+  constructor(){ super({key:'EndingScene'}); }
+
+  create(){
+    const W=800, H=600;
+    this.add.rectangle(W/2,H/2,W,H,0x000000);
+
+    // Stars
+    for(let i=0;i<40;i++){
+      this.add.image(rand(10,790),rand(10,590),'star')
+        .setScale(Phaser.Math.FloatBetween(0.1,0.3))
+        .setAlpha(Phaser.Math.FloatBetween(0.3,0.8));
+    }
+
+    // Sky strip
+    this.add.image(W/2,H/2,'sky').setDisplaySize(W,260).setAlpha(0.35).setY(200);
+
+    const panel=this.add.graphics();
+    panel.fillStyle(0x080818,0.9); panel.fillRoundedRect(100,60,600,480,12);
+    panel.lineStyle(2,0xffd700); panel.strokeRoundedRect(100,60,600,480,12);
+
+    this.add.text(W/2, 120, '✦ REALM RESTORED ✦', {
+      fontSize:'38px', fill:'#ffd700', fontStyle:'bold',
+      stroke:'#000', strokeThickness:4
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, 175, 'The Dark Knight has fallen.', {
+      fontSize:'18px', fill:'#ffffff'
+    }).setOrigin(0.5);
+
+    const story=[
+      'Peace returns to the land as the last shadows',
+      'of the Dark Fortress dissolve into the dawn.',
+      '',
+      'The village elder weeps with joy.',
+      'Songs of your deeds echo through the ages.',
+      '',
+      '— Your party —'
+    ];
+    story.forEach((line,i)=>
+      this.add.text(W/2, 218+i*26, line, {fontSize:'14px',fill:'#cccccc'}).setOrigin(0.5)
+    );
+
+    // Party summary
+    GS.party.forEach((h,i)=>{
+      const py=432+i*28;
+      this.add.text(W/2-80, py, h.name, {fontSize:'14px',fill:'#ffcc44',fontStyle:'bold'}).setOrigin(0,0.5);
+      this.add.text(W/2+0,  py, 'Lv '+h.level, {fontSize:'14px',fill:'#88ff88'}).setOrigin(0,0.5);
+      this.add.text(W/2+60, py, h.hp+'/'+h.maxHp+' HP', {fontSize:'14px',fill:'#88aaff'}).setOrigin(0,0.5);
+    });
+
+    const prompt=this.add.text(W/2, 520, 'PRESS SPACE TO RETURN TO TITLE', {
+      fontSize:'14px', fill:'#ffffff', letterSpacing:2
+    }).setOrigin(0.5);
+    this.tweens.add({targets:prompt, alpha:0.2, duration:600, yoyo:true, repeat:-1});
+
+    this.spaceKey=this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.enterKey=this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
+  }
+
+  update(){
+    const K=Phaser.Input.Keyboard;
+    if(K.JustDown(this.spaceKey)||K.JustDown(this.enterKey)){
+      // Reset game state for replay
+      GS.playerTileX=20; GS.playerTileY=15;
+      GS.flags={};
+      GS.inventory.gold=100;
+      GS.inventory.items=[{item:ITEMS.potion,qty:3},{item:ITEMS.ether,qty:1}];
+      GS.party.forEach(h=>{
+        h.level=1; h.xp=0; h.xpToNext=50;
+        const base={Warrior:{hp:80,mp:10,atk:15,def:10,mag:3,spd:8},
+                    Mage:{hp:40,mp:50,atk:5,def:4,mag:18,spd:10},
+                    Cleric:{hp:55,mp:40,atk:7,def:7,mag:12,spd:7}}[h.name];
+        if(base){ Object.assign(h,base); h.maxHp=base.hp; h.maxMp=base.mp; }
+      });
+      this.cameras.main.fade(600,0,0,0);
+      this.time.delayedCall(600,()=>{
+        this.scene.start('TitleScene');
+        this.scene.launch('UIScene');
+      });
+    }
+  }
+}
 // ============================================================
 // UI SCENE  (persistent HUD)
 // ============================================================
@@ -966,7 +1262,7 @@ const config={
   type: Phaser.AUTO,
   width: 800, height: 600,
   backgroundColor:'#1a1a2e',
-  scene:[PreloadScene,TitleScene,OverworldScene,BattleScene,DialogueScene,UIScene]
+  scene:[PreloadScene,TitleScene,OverworldScene,BattleScene,DialogueScene,DungeonScene,EndingScene,UIScene]
 };
 new Phaser.Game(config);
 </script>
