@@ -468,9 +468,13 @@ class BattleScene extends Phaser.Scene {
     const alive=GS.party.filter(h=>h.hp>0);
     if(!alive.length){ this._checkOver(); return; }
     const target=alive[rand(0,alive.length-1)];
+    const pi=GS.party.indexOf(target);
     const dmg=calcDmg(e.atk,target.def);
     target.hp=Math.max(0,target.hp-dmg);
     this._addLog(e.name+' attacks '+target.name+' for '+dmg+' dmg!');
+    this._flashHero(pi);
+    this._floatDmg(660, 75+pi*100+40, '-'+dmg, '#ff5555');
+    if(dmg>=12) this._shake(true); else this._shake(false);
     this._updateUI();
     this.time.delayedCall(600,()=>{ if(!this._checkOver()) this._advanceTurn(); });
   }
@@ -483,6 +487,9 @@ class BattleScene extends Phaser.Scene {
       const dmg=calcDmg(hero.atk,e.def);
       e.hp=Math.max(0,e.hp-dmg);
       this._addLog(hero.name+' attacks '+e.name+' for '+dmg+' dmg!');
+      this._flashEnemy(this.targetIdx);
+      this._floatDmg(this.eSp[this.targetIdx].sp.x, this.eSp[this.targetIdx].sp.y-30, '-'+dmg);
+      this._shake(dmg>=15);
     } else if(this.selectedAction==='Magic'){
       const sk=hero.skills[0];
       hero.mp=Math.max(0,hero.mp-sk.mpCost);
@@ -490,19 +497,29 @@ class BattleScene extends Phaser.Scene {
         const target=GS.party[this.allyIdx];
         target.hp=Math.min(target.maxHp,target.hp+sk.heal);
         this._addLog(hero.name+' uses '+sk.name+'! '+target.name+' recovers '+sk.heal+' HP!');
+        this._floatDmg(660, 75+this.allyIdx*100+40, '+'+sk.heal, '#44ff88');
       } else {
         const e=this.enemies[this.targetIdx];
         const dmg=calcMagDmg(hero.mag,e.mag,sk.magMult||1.5);
         e.hp=Math.max(0,e.hp-dmg);
         this._addLog(hero.name+' casts '+sk.name+' on '+e.name+' for '+dmg+'!');
+        this._flashEnemy(this.targetIdx);
+        this._floatDmg(this.eSp[this.targetIdx].sp.x, this.eSp[this.targetIdx].sp.y-30, '-'+dmg, '#bb88ff');
+        this._shake(true);
       }
     } else if(this.selectedAction==='Item'){
       const cons=GS.inventory.items.filter(i=>i.item.type==='consumable');
       const entry=cons[this.itemIdx];
       if(entry){
         const itm=entry.item, tgt=GS.party[this.allyIdx];
-        if(itm.effect.hp) tgt.hp=Math.min(tgt.maxHp,tgt.hp+itm.effect.hp);
-        if(itm.effect.mp) tgt.mp=Math.min(tgt.maxMp,tgt.mp+itm.effect.mp);
+        if(itm.effect.hp){
+          tgt.hp=Math.min(tgt.maxHp,tgt.hp+itm.effect.hp);
+          this._floatDmg(660, 75+this.allyIdx*100+40, '+'+itm.effect.hp+' HP', '#44ff88');
+        }
+        if(itm.effect.mp){
+          tgt.mp=Math.min(tgt.maxMp,tgt.mp+itm.effect.mp);
+          this._floatDmg(660, 75+this.allyIdx*100+40, '+'+itm.effect.mp+' MP', '#4488ff');
+        }
         removeItem(itm.id);
         this._addLog(hero.name+' uses '+itm.name+' on '+tgt.name+'!');
       }
@@ -527,7 +544,6 @@ class BattleScene extends Phaser.Scene {
   }
 
   _endBattle(result){
-    this.phase='over';
     this._clearOverlay();
     if(result==='victory'){
       let xp=0,gold=0; const drops=[];
@@ -539,16 +555,9 @@ class BattleScene extends Phaser.Scene {
       const lvMsgs=[];
       for(const h of GS.party) if(h.hp>0){ h.xp+=xp; lvMsgs.push(...checkLevelUp(h)); }
       for(const d of drops) addItem(d);
-      let msg='Victory! +'+xp+' XP, +'+gold+' gold!';
-      if(drops.length) msg+=' Found: '+drops.map(d=>ITEMS[d].name).join(', ')+'!';
-      this._addLog(msg);
-      for(const m of lvMsgs) this._addLog(m);
-      this._updateUI();
-      this.time.delayedCall(2200,()=>this._close('win'));
+      this.time.delayedCall(400,()=>this._showResultScreen(true,xp,gold,drops,lvMsgs));
     } else if(result==='defeat'){
-      this._addLog('The party has been defeated...');
-      this._updateUI();
-      this.time.delayedCall(2200,()=>this._close('defeat'));
+      this.time.delayedCall(400,()=>this._showResultScreen(false,0,0,[],[]));
     } else {
       this._close(result==='flee'?'win':result);
     }
@@ -564,6 +573,67 @@ class BattleScene extends Phaser.Scene {
   _addLog(msg){
     this.log.push(msg); if(this.log.length>4) this.log.shift();
     if(this.logTxt) this.logTxt.setText(this.log.join('\n'));
+  }
+
+  _floatDmg(x,y,text,color='#ff5555'){
+    const t=this.add.text(x,y,text,{fontSize:'22px',fill:color,fontStyle:'bold',stroke:'#000',strokeThickness:3}).setOrigin(0.5).setDepth(20);
+    this.tweens.add({targets:t,y:y-65,alpha:0,duration:900,ease:'Cubic.Out',onComplete:()=>t.destroy()});
+  }
+
+  _flashEnemy(idx){
+    const sp=this.eSp[idx].sp, orig=this.enemies[idx].tint;
+    sp.setTint(0xffffff);
+    this.time.delayedCall(130,()=>{ if(sp.active) sp.setTint(orig); });
+  }
+
+  _flashHero(pi){
+    const py=75+pi*100;
+    const f=this.add.graphics().setDepth(10);
+    f.fillStyle(0xff2222,0.55); f.fillRoundedRect(553,py-4,226,88,4);
+    this.tweens.add({targets:f,alpha:0,duration:380,onComplete:()=>f.destroy()});
+  }
+
+  _shake(big=false){
+    this.cameras.main.shake(big?220:140, big?0.008:0.004);
+  }
+
+  _showResultScreen(victory, xp, gold, drops, lvMsgs){
+    const W=800,H=600;
+    const dim=this.add.graphics().setDepth(25);
+    dim.fillStyle(0x000000,0.7); dim.fillRect(0,0,W,H);
+
+    const bx=160,by=130,bw=480,bh=340;
+    const panel=this.add.graphics().setDepth(26);
+    const bc=victory?0x1a2a0a:0x2a0a0a, lc=victory?0x66dd22:0xdd2222;
+    panel.fillStyle(bc,0.97); panel.fillRoundedRect(bx,by,bw,bh,10);
+    panel.lineStyle(3,lc,1); panel.strokeRoundedRect(bx,by,bw,bh,10);
+
+    const title=victory?'VICTORY!':'GAME OVER';
+    const tc=victory?'#88ff44':'#ff4444';
+    this.add.text(W/2,by+50,title,{fontSize:'42px',fill:tc,fontStyle:'bold',stroke:'#000',strokeThickness:4}).setOrigin(0.5).setDepth(27);
+
+    if(victory){
+      this.add.text(W/2,by+105,'+'+xp+' XP     +'+gold+' Gold',{fontSize:'20px',fill:'#ffdd88'}).setOrigin(0.5).setDepth(27);
+      let lineY=by+140;
+      if(drops.length){
+        this.add.text(W/2,lineY,'Found: '+drops.map(d=>ITEMS[d].name).join(', '),{fontSize:'14px',fill:'#88ffcc'}).setOrigin(0.5).setDepth(27);
+        lineY+=26;
+      }
+      for(const m of lvMsgs){
+        this.add.text(W/2,lineY,'★ '+m,{fontSize:'15px',fill:'#ffff44',fontStyle:'bold'}).setOrigin(0.5).setDepth(27);
+        lineY+=26;
+      }
+    } else {
+      this.add.text(W/2,by+105,'The party has been defeated...',{fontSize:'16px',fill:'#ffaaaa'}).setOrigin(0.5).setDepth(27);
+      this.add.text(W/2,by+135,'All KO\'d members revive with 1 HP.',{fontSize:'13px',fill:'#888888'}).setOrigin(0.5).setDepth(27);
+    }
+
+    const prompt=this.add.text(W/2,by+bh-38,'PRESS SPACE TO CONTINUE',{fontSize:'15px',fill:'#ffffff',letterSpacing:2}).setOrigin(0.5).setDepth(27);
+    this.tweens.add({targets:prompt,alpha:0.2,duration:550,ease:'Linear',yoyo:true,repeat:-1});
+
+    this._battleOutcome=victory?'win':'defeat';
+    this.phase='over';
+    this._updateUI();
   }
 
   _clearOverlay(){
@@ -612,8 +682,12 @@ class BattleScene extends Phaser.Scene {
   }
 
   update(){
-    if(this.phase==='over'||this.phase==='animating'||this.phase==='init') return;
+    if(this.phase==='animating'||this.phase==='init') return;
     const K=Phaser.Input.Keyboard;
+    if(this.phase==='over'){
+      if(K.JustDown(this.keys.space)||K.JustDown(this.keys.enter)) this._close(this._battleOutcome||'win');
+      return;
+    }
     const jd={
       up:    K.JustDown(this.keys.up)   ||K.JustDown(this.keys.w),
       down:  K.JustDown(this.keys.down) ||K.JustDown(this.keys.s),
