@@ -5,7 +5,7 @@
   body { margin:0; background:#000; display:flex; justify-content:center; align-items:center; height:100vh; }
   canvas { display:block; }
 </style>
-<script src="//cdn.jsdelivr.net/npm/phaser@3.20.0/dist/phaser.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.20.0/dist/phaser.js"></script>
 </head>
 <body>
 <script>
@@ -276,6 +276,8 @@ class TitleScene extends Phaser.Scene {
   }
 
   _start(){
+    if(this._starting) return;
+    this._starting=true;
     this.cameras.main.fade(500,0,0,0);
     this.time.delayedCall(500,()=>{
       this.scene.start('OverworldScene');
@@ -382,7 +384,6 @@ class OverworldScene extends Phaser.Scene {
 
   _onBattleEnd(result){
     this.inBattle=false;
-    this.scene.resume('OverworldScene');
     if(result==='defeat') for(const h of GS.party) if(h.hp<=0) h.hp=1;
   }
   _onDialogueEnd(){ this.inDialogue=false; }
@@ -862,7 +863,7 @@ class BattleScene extends Phaser.Scene {
     bg.fillStyle(0x0a0a1e,0.95); bg.fillRoundedRect(250,160,300,30+cons.length*28,6);
     bg.lineStyle(1,0x334499); bg.strokeRoundedRect(250,160,300,30+cons.length*28,6);
     this.overlayTexts.push(bg);
-    this.add.text(400,168,'Use Item',{fontSize:'13px',fill:'#ffcc44'}).setOrigin(0.5).setDepth(9);
+    this.overlayTexts.push(this.add.text(400,168,'Use Item',{fontSize:'13px',fill:'#ffcc44'}).setOrigin(0.5).setDepth(9));
     for(let i=0;i<cons.length;i++){
       const e=cons[i];
       const t=this.add.text(270,192+i*28,
